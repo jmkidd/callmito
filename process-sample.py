@@ -18,6 +18,8 @@ parser.add_argument('--finaldir', type=str,help='final dir for output',required=
 parser.add_argument('--name', type=str,help='name of sample to process',required=True)
 parser.add_argument('--cram', type=str,help='aligned cram file',required=True)
 parser.add_argument('--coords',type=str,help='coordinates to extract, numts + chrM',required=True)
+parser.add_argument('--mitoFa',type=str,help='mito fasta with index',required=True)
+parser.add_argument('--mitoFaRotated',type=str,help='rotated mito fasta with index',required=True)
 
 args = parser.parse_args()
 
@@ -31,6 +33,9 @@ myData['sampleName'] = args.name
 
 myData['cramFileName'] = args.cram
 myData['coordsFileName'] = args.coords
+
+myData['mitoFa'] = args.mitoFa
+myData['mitoFaRotated'] = args.mitoFaRotated
 
 
 if myData['finalDir'][-1] != '/':
@@ -60,6 +65,10 @@ callmito.check_prog_paths(myData)
 
 # get reads to extract
 callmito.extract_reads(myData)
+
+# align to each mito
+callmito.align_to_mitos(myData)
+
 
 
 

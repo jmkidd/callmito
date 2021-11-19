@@ -357,7 +357,73 @@ def extract_reads(myData):
     myData['logFile'].write(s + '\n')          
     myData['logFile'].flush() 
 ###############################################################################        
+def align_to_mitos(myData):
+    s = 'align to the two mitos'
+    print(s,flush=True)
+    myData['logFile'].write(s + '\n')          
+    
+    myData['mitoBam']= myData['finalDirSample'] + 'mito.bam'
+    myData['mitoRotatedBam']= myData['finalDirSample'] + 'mitoRotated.bam'    
+    
+    # align to mito
+    rg = '@RG\\tID:norm\\tSM:%s\\tPL:Illumina' % (myData['sampleName'])
+    rg = '\'' + rg + '\''
+    print('rg is',rg)
+    cmd = 'bwa mem -R %s %s %s %s | samtools view -b -o %s - ' % (rg,myData['mitoFa'],myData['fastq1OutName'],myData['fastq2OutName'],myData['mitoBam'])
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
+
+
+    # align to rotated mito
+    rg = '@RG\\tID:rotate\\tSM:%s\\tPL:Illumina' % (myData['sampleName'])
+    rg = '\'' + rg + '\''
+    print('rg is',rg)
+    cmd = 'bwa mem -R %s %s %s %s | samtools view -b -o %s - ' % (rg,myData['mitoFaRotated'],myData['fastq1OutName'],myData['fastq2OutName'],myData['mitoRotatedBam'])
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
+    
+    # sort and markdups
+    myData['mitoBamSort'] = myData['finalDirSample'] + 'mito.sort.bam'
+    myData['mitoRotatedBamSort'] = myData['finalDirSample'] + 'mitoRotated.sort.bam'    
+    
+    cmd = 'gatk SortSam -SO coordinate -I %s -O %s ' % (myData['mitoBam'],myData['mitoBamSort'])
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
+
+    cmd = 'gatk SortSam -SO coordinate -I %s -O %s ' % (myData['mitoRotatedBam'],myData['mitoRotatedBamSort'])
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
+    
+    # mark duplicates
+    myData['mitoBamSortMD'] = myData['finalDirSample'] + 'mito.sort.markdup.bam'
+    myData['mitoRotatedBamSortMD'] = myData['finalDirSample'] + 'mitoRotated.sort.markdup.bam'    
+    
+    myData['mitoBamDupMet'] = myData['finalDirSample'] + 'mito.dup_metrics.txt'
+    myData['mitoRotatedDupMet'] = myData['finalDirSample'] + 'mitoRotated.dup_metrics.txt'    
+    
+    cmd = 'gatk MarkDuplicates -I %s -O %s -M %s ' % (myData['mitoBamSort'],myData['mitoBamSortMD'],myData['mitoBamDupMet'])
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
+
+    cmd = 'gatk MarkDuplicates -I %s -O %s -M %s ' % (myData['mitoRotatedBamSort'],myData['mitoRotatedBamSortMD'],myData['mitoRotatedDupMet'])
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
+    
+    
+    
+    
+    
+    
+    
 
 
 
 
+
+###############################################################################        
