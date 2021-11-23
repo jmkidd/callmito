@@ -35,7 +35,7 @@ def runCMD_output(cmd):
 def check_prog_paths(myData):        
     myData['logFile'].write('\nChecking for required programs...\n')
     
-    for p in ['bwa','gatk','samtools','liftOver']:
+    for p in ['bwa','gatk','samtools','liftOver','bgzip','tabix','bcftools']:
         if shutil.which(p) is None:
             s = p + ' not found in path! please fix (module load?)'
             print(s, flush=True)
@@ -550,16 +550,18 @@ def call_vars(myData):
     myData['mitoRotatedVCFLift'] = myData['finalDirSample'] + 'mitoRotated.LIFT.vcf.gz'
     myData['mitoRotatedVCFLiftFail'] = myData['finalDirSample'] + 'mitoRotated.LIFT-FAIL.vcf.gz'       
     
+    myData['mitoMergeVCF'] =  myData['finalDirSample'] + 'mitoMerged.vcf'
+    
 
     cmd = 'gatk Mutect2 -R %s --mitochondria-mode -I %s --median-autosomal-coverage %f --annotation StrandBiasBySample -O %s' % (myData['mitoFa'],myData['mitoBamSortMD'], myData['autoCoverage'],myData['mitoVCF']) 
     print(cmd,flush=True)
     myData['logFile'].write(cmd + '\n')              
-#    runCMD(cmd)
+    runCMD(cmd)
 
     cmd = 'gatk Mutect2 -R %s --mitochondria-mode -I %s --median-autosomal-coverage %f --annotation StrandBiasBySample -O %s' % (myData['mitoFaRotated'],myData['mitoRotatedBamSortMD'], myData['autoCoverage'],myData['mitoRotatedVCF']) 
     print(cmd,flush=True)
     myData['logFile'].write(cmd + '\n')              
-#    runCMD(cmd)
+    runCMD(cmd)
 
     # run liftover vcf    
     cmd = 'gatk LiftoverVcf -I %s -O %s -CHAIN %s -REJECT %s -R %s ' % (myData['mitoRotatedVCF'],myData['mitoRotatedVCFLift'],myData['chainFile'],myData['mitoRotatedVCFLiftFail'],myData['mitoFa'] )    
@@ -570,13 +572,281 @@ def call_vars(myData):
     # do the read in and merge
     # get rid of PASS annotation...
     
+    
+    # read in 
+    liftedVCF = []
+    inFile = gzip.open(myData['mitoRotatedVCFLift'],'rt')
+    for line in inFile:
+        if line[0] == '#':
+            continue
+        line = line.rstrip()
+        line = line.split()
+        line[1] = int(line[1])
+        line[6] = '.'
+        liftedVCF.append(line)
+    inFile.close()
+    print('read in %i from %s' % (len(liftedVCF),myData['mitoRotatedVCFLift']))
 
+    mitoVCF = []
+    inFile = gzip.open(myData['mitoVCF'],'rt')
+    for line in inFile:
+        if line[0] == '#':
+            continue
+        line = line.rstrip()
+        line = line.split()
+        line[1] = int(line[1])
+        line[6] = '.'
+        mitoVCF.append(line)
+    inFile.close()
+    print('read in %i from %s' % (len(mitoVCF),myData['mitoVCF']))
 
-
-
-
-
-
+    outFile = open(myData['mitoMergeVCF'],'w')
+    
+    # header
+    inFile = gzip.open(myData['mitoVCF'],'rt')
+    for line in inFile:
+        if line[0] == '#':
+            outFile.write(line)
+    inFile.close()
+    
+    # part 1
+    for row in liftedVCF:
+        if row[1] <= myData['roteTake']:
+            nl = row
+            nl = [str(i) for i in nl]
+            nl = '\t'.join(nl) + '\n'
+            outFile.write(nl)
+    # middle part
+    for row in mitoVCF:
+        if row[1] > myData['roteTake'] and row[1] < (myData['mitoLen']-myData['roteTake'] +1 ):
+            nl = row
+            nl = [str(i) for i in nl]
+            nl = '\t'.join(nl) + '\n'
+            outFile.write(nl)
+    
+    # end part
+    for row in liftedVCF:
+        if row[1] >= (myData['mitoLen']-myData['roteTake'] +1 ):
+            nl = row
+            nl = [str(i) for i in nl]
+            nl = '\t'.join(nl) + '\n'
+            outFile.write(nl)
+    outFile.close()
+    
+    # compress and tabix
+    cmd = 'bgzip %s' % myData['mitoMergeVCF']
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
+    
+    myData['mitoMergeVCF']+= '.gz'
+    cmd = 'tabix -p vcf %s' % myData['mitoMergeVCF']
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
 ###################################################################################################
+def filter_germline(myData):
+# filter out for germline calls
+    myData['mitoMergeVCFFilter'] =  myData['finalDirSample'] + 'mitoMerged.germline.filter.vcf'
+
+    inFile = gzip.open(myData['mitoMergeVCF'],'rt')
+    outFile = open(myData['mitoMergeVCFFilter'],'w')
+    for line in inFile:
+        if line[0] == '#':
+            outFile.write(line)
+            continue
+        line = line.rstrip()
+        line = line.split()
+        
+        infoDict = parse_vcf_info(line[7])
+        genoDict = parse_genotype(line[8],line[9])
+        
+        
+        if float(infoDict['SAPP'][0]) > 0.95: # strand bias cutoff
+             continue
+        
+        # check num alt alleles
+        alts = line[4]
+        alts = alts.split(',')
+        if len(alts) != 1:  # multiple alternative alleles
+            continue
+        
+        # get dp
+        dp = genoDict['AD']
+        dp0 = int(dp[0])
+        dp1 = int(dp[1])
+        tot = dp0 + dp1
+        f = dp1/tot
+        if f < 0.95:
+            continue
+        
+        line[6] = 'PASS'
+        
+        # edit the gen
+        gen = line[9]
+        gen = gen.split(':')
+        gen[0] = '1/1'
+        line[9] = ':'.join(gen)
+        
+        nl = '\t'.join(line) + '\n'
+        outFile.write(nl)
+            
+    inFile.close()
+    outFile.close()  
+    # convert to gz
+    cmd = 'bgzip %s' % myData['mitoMergeVCFFilter']
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
+    
+    myData['mitoMergeVCFFilter']+= '.gz'
+    cmd = 'tabix -p vcf %s' % myData['mitoMergeVCFFilter']
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
+    
+    
+    
+###################################################################################################
+def make_fasta_germline(myData):
+    myData['mitoMergeMasked'] =  myData['finalDirSample'] + 'mask-regions.bed'
+    myData['mitoMergeFasta'] = myData['finalDirSample'] + myData['sampleName'] + '.fa'
+    
+    tmpFa = myData['mitoMergeMasked'] + '.tmp.fa'
+    
+    
+    # first setup regions to mask, includes hard coded regions
+    # and any region with depth < 100
+    outFile = open(myData['mitoMergeMasked'],'w')
+    outFile.write('NC_002008.4\t16039\t16550\n')
+    outFile.write('NC_002008.4\t15511\t15535\n')    
+    
+    alreadyMasked = {}
+    for i in range(16040,16550+1):
+        alreadyMasked[i] = 1
+    for i in range(15512,15535+1):
+        alreadyMasked[i] = 1
+
+    
+    
+    failDepthMask = 0
+    inFile = open(myData['mitoMergePerBp'],'r')
+    for line in inFile:
+        line = line.rstrip()
+        line = line.split()
+        pos = int(line[0])
+        d = int(line[1])
+        if d < 100 and pos not in alreadyMasked:
+            failDepthMask +=1
+            outFile.write('NC_002008.4\t%i\t%i\n' % (pos-1,pos))
+    inFile.close()
+    outFile.close()
+    
+    s = 'found %i positions that failed depth check 100' % failDepthMask
+    print(s,flush=True)
+    myData['logFile'].write(s + '\n')              
+    
+    # make fasta
+    cmd = 'bcftools consensus -f %s -m %s %s > %s ' % (myData['mitoFa'],myData['mitoMergeMasked'],myData['mitoMergeVCFFilter'], tmpFa )
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
+
+    inFile = open(tmpFa,'r')
+    outFile = open(myData['mitoMergeFasta'],'w')
+    for line in inFile:
+        if line[0] == '>':
+            outFile.write('>%s\n' % myData['sampleName'])
+        else:
+            outFile.write(line)
+    inFile.close()
+    outFile.close()    
+#############################################################################    
+def assign_haplogroup(myData):
+    # read in diagnostic table
+    myData['mitoMergeHaploGroup'] = myData['finalDirSample'] + myData['sampleName'] + '.haplogroup.txt'
+    
+    inFile = open(myData['diagnosticTable'],'r')
+    haplos = []
+    for line in inFile:
+        line = line.rstrip()
+        line = line.split('\t')
+        if line[0] == '#':
+            header = line
+        else:
+            haplos.append(line)        
+    inFile.close()
+    
+    # read in all the SNPs
+    inFile = gzip.open(myData['mitoMergeVCFFilter'],'rt')
+    snps = {}
+    for line in inFile:
+        if line[0] == '#':
+             continue
+        line = line.rstrip()
+        line = line.split()
+        
+        pos = line[1]
+        ref = line[3]
+        alt = line[4]
+        i = ref + '-' + pos + '-' + alt
+        snps[i] = 1
+    inFile.close()
+    
+    print('read in snps to compare',len(snps))
+    outFile = open(myData['mitoMergeHaploGroup'],'w')
+    outFile.write('#Haplogroup\tNumber of SNPs\tSNPs\tNumber Present\n')
+    
+    outputRows = []
+    for hap in haplos:
+        numFound = 0
+        hapSnp = hap[2].split(';')
+        for h in hapSnp:
+            if h in snps:
+                numFound += 1
+        # print them all out I suppose..
+        nl = hap
+        nl.append(str(numFound))
+        nl = '\t'.join(nl)
+        outFile.write(nl + '\n')
+        print(nl)
+    outFile.close()
+    
+
+#############################################################################    
+# Makes a dictionary of the info field in a vcf file
+# returns the dictionary
+#example: DP=5;AF1=1;CI95=0.5,1;DP4=0,0,4,1;MQ=51
+def parse_vcf_info(infoField):
+    info = {}
+    infoList = infoField.split(';')
+    for field in infoList:
+       if field.count('=') == 1:
+           (name,vals) = field.split('=')[0:2]
+           vals = vals.split(',')
+           if vals == 'true' or vals == 'True':
+               vals = True
+           if vals == 'false' or vals == 'False':
+               vals = False
+           info[name] = vals
+       else:
+           info[field] = 'PRESENT'
+    return info
+#############################################################################                 
+def parse_genotype(formatField,genoTypeField):
+# parse the genotype into a dictionary, based on format field
+    genotypeInfo = {}
+    formats = formatField.split(':')
+    genFields = genoTypeField.split(':')
+    for i in range(len(formats)):
+        f= formats[i]
+        g = genFields[i]
+        g = g.split(',')
+        genotypeInfo[f] = g
+    return(genotypeInfo)
+#############################################################################                 
+
+
+
 
 
