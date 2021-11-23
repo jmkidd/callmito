@@ -677,7 +677,7 @@ def filter_germline(myData):
         dp1 = int(dp[1])
         tot = dp0 + dp1
         f = dp1/tot
-        if f < 0.95:
+        if f < 0.99:
             continue
         
         line[6] = 'PASS'
