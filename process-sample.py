@@ -20,6 +20,10 @@ parser.add_argument('--cram', type=str,help='aligned cram file',required=True)
 parser.add_argument('--coords',type=str,help='coordinates to extract, numts + chrM',required=True)
 parser.add_argument('--mitoFa',type=str,help='mito fasta with index',required=True)
 parser.add_argument('--mitoFaRotated',type=str,help='rotated mito fasta with index',required=True)
+parser.add_argument('--chainfile',type=str,help='liftover chain fail to convert rotated to original',required=True)
+parser.add_argument('--autocoverage',type=float,help='autosomal coverage',required=True)
+
+
 
 args = parser.parse_args()
 
@@ -36,6 +40,38 @@ myData['coordsFileName'] = args.coords
 
 myData['mitoFa'] = args.mitoFa
 myData['mitoFaRotated'] = args.mitoFaRotated
+
+
+myData['autoCoverage'] = args.autocoverage
+
+
+
+myData['chainFile'] = args.chainfile
+
+# get sequence len
+inFile = open(myData['mitoFa'] + '.fai','r')
+line = inFile.readline()
+line = line.rstrip()
+line = line.split()
+l = int(line[1])
+myData['mitoLen'] = l
+inFile.close()
+
+myData['roteTake'] = 4000 # take 4000 first and last from the rotated
+
+
+# check that have interval list file
+myData['mitoFaIntervalList'] = myData['mitoFa'].replace('.fa','.interval_list')
+myData['mitoFaRotatedIntervalList'] = myData['mitoFaRotated'].replace('.fa','.interval_list')
+
+if os.path.isfile(myData['mitoFaIntervalList']) is False:
+    print('ERROR! %s not found, please make interval list' % myData['mitoFaIntervalList'])
+    sys.exit()
+
+if os.path.isfile(myData['mitoFaRotatedIntervalList']) is False:
+    print('ERROR! %s not found, please make interval list' % myData['mitoFaIntervalList'])
+    sys.exit()
+
 
 
 if myData['finalDir'][-1] != '/':
@@ -64,10 +100,20 @@ callmito.init_log(myData)
 callmito.check_prog_paths(myData)
 
 # get reads to extract
-callmito.extract_reads(myData)
+#callmito.extract_reads(myData)
 
 # align to each mito
-callmito.align_to_mitos(myData)
+#callmito.align_to_mitos(myData)
+
+myData['mitoBamSortMD'] = myData['finalDirSample'] + 'mito.sort.markdup.bam'
+myData['mitoRotatedBamSortMD'] = myData['finalDirSample'] + 'mitoRotated.sort.markdup.bam'    
+
+#callmito.run_coverage(myData)
+
+# run vcf
+callmito.call_vars(myData)
+
+
 
 
 

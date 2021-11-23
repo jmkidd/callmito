@@ -9,7 +9,7 @@ import time
 import socket
 import shutil
 import gzip
-
+import numpy as np
 
 ###############################################################################
 # Helper function to run commands, handle return values and print to log file
@@ -24,7 +24,7 @@ def runCMD(cmd):
 ###############################################################################
 # Helper function to run commands, handle return values and print to log file
 def runCMD_output(cmd):
-    val = subprocess.Popen(cmd, text=True, shell=True, stdout = subprocess.PIPE)
+    val = subprocess.Popen(cmd, universal_newlines=True, shell=True, stdout = subprocess.PIPE)
     resLines = []
     for i in val.stdout:
        i = i.rstrip()
@@ -35,7 +35,7 @@ def runCMD_output(cmd):
 def check_prog_paths(myData):        
     myData['logFile'].write('\nChecking for required programs...\n')
     
-    for p in ['bwa','gatk','samtools']:
+    for p in ['bwa','gatk','samtools','liftOver']:
         if shutil.which(p) is None:
             s = p + ' not found in path! please fix (module load?)'
             print(s, flush=True)
@@ -415,15 +415,168 @@ def align_to_mitos(myData):
     myData['logFile'].write(cmd + '\n')              
     runCMD(cmd)
     
-    
-    
-    
-    
-    
-    
+    # index    
+    cmd = 'samtools index %s' % myData['mitoBamSortMD']
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
 
-
-
-
-
+    cmd = 'samtools index %s' % myData['mitoRotatedBamSortMD']
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
 ###############################################################################        
+def run_coverage(myData):
+# get covergage
+    
+    myData['mitoHSmets'] =  myData['finalDirSample'] + 'mito.hsmets.txt'
+    myData['mitoPerBp'] = myData['finalDirSample'] + 'mito.per-base.txt'
+
+    myData['mitoRotatedHSmets'] =  myData['finalDirSample'] + 'mitoRotated.hsmets.txt'
+    myData['mitoRotatedPerBp'] = myData['finalDirSample'] + 'mitoRotated.per-base.txt'
+
+
+    
+    cmd = 'gatk CollectHsMetrics -I %s -O %s -R %s -PER_BASE_COVERAGE %s --COVERAGE_CAP 50000 --SAMPLE_SIZE 1 -BI %s -TI %s ' % ( myData['mitoBamSortMD'],
+              myData['mitoHSmets'],myData['mitoFa'],myData['mitoPerBp'],myData['mitoFaIntervalList'],myData['mitoFaIntervalList']  )
+              
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
+
+    cmd = 'gatk CollectHsMetrics -I %s -O %s -R %s -PER_BASE_COVERAGE %s --COVERAGE_CAP 50000 --SAMPLE_SIZE 1 -BI %s -TI %s ' % ( myData['mitoRotatedBamSortMD'],
+              myData['mitoRotatedHSmets'],myData['mitoFaRotated'],myData['mitoRotatedPerBp'],myData['mitoFaRotatedIntervalList'],myData['mitoFaRotatedIntervalList']  )
+              
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
+    
+    
+    # now, do the conversion
+    
+    
+    mitoDepth = {}
+    inFile = open(myData['mitoPerBp'],'r')
+    for line in inFile:
+        line = line.rstrip()
+        line = line.split()
+        if line[0] == 'chrom':
+            continue
+        line[1] = int(line[1])
+        line[3] = int(line[3])
+        mitoDepth[line[1]] = line[3]
+    inFile.close()
+
+    mitoRotDepth = []
+    inFile = open(myData['mitoRotatedPerBp'],'r')
+    for line in inFile:
+        line = line.rstrip()
+        line = line.split()
+        if line[0] == 'chrom':
+            continue
+        line[1] = int(line[1])
+        line[3] = int(line[3])
+        mitoRotDepth.append([line[0],line[1],line[3]])
+    inFile.close()
+    
+    # make tmp rotated
+    myData['mitoRotatedPerBpBED'] = myData['mitoRotatedPerBp'] + '.bed'
+    myData['mitoRotatedPerBpBEDlift'] =  myData['mitoRotatedPerBpBED'] + '.lift'
+    myData['mitoRotatedPerBpBEDliftFail'] =  myData['mitoRotatedPerBpBED'] + '.liftFail'    
+    outFile = open(myData['mitoRotatedPerBpBED'],'w')
+    for r in mitoRotDepth:
+        k = str(r[1]) + ':' + str(r[2])
+        nl = '%s\t%i\t%i\t%s\n' % (r[0],r[1]-1,r[1],k)
+        outFile.write(nl)    
+    outFile.close()
+    
+    # run liftover
+    
+    cmd = 'liftOver %s %s %s %s' % (myData['mitoRotatedPerBpBED'],myData['chainFile'],myData['mitoRotatedPerBpBEDlift'],myData['mitoRotatedPerBpBEDliftFail'])
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
+        
+    
+    # read in the new one...
+    mitoRotDepth = {}
+    inFile = open(myData['mitoRotatedPerBpBEDlift'],'r')
+    for line in inFile:
+        line = line.rstrip()
+        line = line.split()
+        if line[0] == 'chrom':
+            continue
+        p = int(line[2])
+        k = line[3]
+        d = k.split(':')[1]
+        d = int(d)
+        mitoRotDepth[p] = d
+    inFile.close()
+    # now have to do the merge.....
+    
+    # now can output the depth
+    myData['mitoMergePerBp'] =  myData['finalDirSample'] + 'mitoMerge.per-bp.txt'
+    outFile = open(myData['mitoMergePerBp'],'w')
+    
+    tr = 0
+    allDepth = []
+    for i in range(1,myData['mitoLen']+1):
+        if i <= myData['roteTake'] or i >= (myData['mitoLen']-myData['roteTake'] +1 ):
+            tr += 1
+            d = mitoRotDepth[i]
+        else:
+            d= mitoDepth[i]
+        allDepth.append(d)
+        outFile.write('%i\t%i\n' % (i,d))
+    outFile.close()
+    print('took %i from rotates' % tr)
+    
+    myData['meanDepth'] = np.mean(allDepth)
+    myData['minDepth'] = min(allDepth)
+    myData['maxDepth'] = max(allDepth)
+    myData['medDepth'] = np.median(allDepth)
+    
+    myData['mitoMergePerBpStats'] = myData['mitoMergePerBp'].replace('.txt','.stats')
+    outFile = open(myData['mitoMergePerBpStats'],'w')
+    for i in ['meanDepth','medDepth','minDepth','maxDepth']:
+        outFile.write('%s\t%i\n' % (i,myData[i]))
+        print('%s\t%i' % (i,myData[i]))
+    outFile.close()
+###################################################################################################
+def call_vars(myData):
+# call the mitochondrial variants
+    myData['mitoVCF'] = myData['finalDirSample'] + 'mito.vcf.gz'
+    myData['mitoRotatedVCF'] = myData['finalDirSample'] + 'mitoRotated.vcf.gz'
+    myData['mitoRotatedVCFLift'] = myData['finalDirSample'] + 'mitoRotated.LIFT.vcf.gz'
+    myData['mitoRotatedVCFLiftFail'] = myData['finalDirSample'] + 'mitoRotated.LIFT-FAIL.vcf.gz'       
+    
+
+    cmd = 'gatk Mutect2 -R %s --mitochondria-mode -I %s --median-autosomal-coverage %f --annotation StrandBiasBySample -O %s' % (myData['mitoFa'],myData['mitoBamSortMD'], myData['autoCoverage'],myData['mitoVCF']) 
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+#    runCMD(cmd)
+
+    cmd = 'gatk Mutect2 -R %s --mitochondria-mode -I %s --median-autosomal-coverage %f --annotation StrandBiasBySample -O %s' % (myData['mitoFaRotated'],myData['mitoRotatedBamSortMD'], myData['autoCoverage'],myData['mitoRotatedVCF']) 
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+#    runCMD(cmd)
+
+    # run liftover vcf    
+    cmd = 'gatk LiftoverVcf -I %s -O %s -CHAIN %s -REJECT %s -R %s ' % (myData['mitoRotatedVCF'],myData['mitoRotatedVCFLift'],myData['chainFile'],myData['mitoRotatedVCFLiftFail'],myData['mitoFa'] )    
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
+    
+    # do the read in and merge
+    # get rid of PASS annotation...
+    
+
+
+
+
+
+
+
+###################################################################################################
+
+
