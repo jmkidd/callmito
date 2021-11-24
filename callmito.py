@@ -771,12 +771,25 @@ def assign_haplogroup(myData):
     for line in inFile:
         line = line.rstrip()
         line = line.split('\t')
-        if line[0] == '#':
+        
+        if line[0] == '#Haplogroup':
             header = line
+        elif line[0] == '#haplogroup':
+            break
         else:
             haplos.append(line)        
+    definedHaps = []
+    haploGroupOrder = line[1:]
+    for line in inFile:
+        line = line.rstrip()
+        line = line.split('\t')
+        hapName = line[0]
+        hapSeq = line[1:]
+        definedHaps.append([hapName,hapSeq])
+
+    print('read in the hap seqs!',len(definedHaps))
     inFile.close()
-    
+       
     # read in all the SNPs
     inFile = gzip.open(myData['mitoMergeVCFFilter'],'rt')
     snps = {}
@@ -797,22 +810,63 @@ def assign_haplogroup(myData):
     outFile = open(myData['mitoMergeHaploGroup'],'w')
     outFile.write('#Haplogroup\tNumber of SNPs\tSNPs\tNumber Present\n')
     
+    pToSNPrecord = {}
     outputRows = []
     for hap in haplos:
         numFound = 0
         hapSnp = hap[2].split(';')
         for h in hapSnp:
+            p = h.split('-')[1]
+            pToSNPrecord[p] = h
             if h in snps:
                 numFound += 1
         # print them all out I suppose..
-        nl = hap
-        nl.append(str(numFound))
-        nl = '\t'.join(nl)
-        outFile.write(nl + '\n')
-        print(nl)
-    outFile.close()
+        if numFound > 0:
+            nl = hap
+            nl.append(str(numFound))
+            nl = '\t'.join(nl)
+            outFile.write(nl + '\n')
+            print(nl)
     
-
+    # now need to make the hap seq to compare with....
+    
+    sampleSeq = []
+    for p in haploGroupOrder:
+        print(p,pToSNPrecord[p])
+        if pToSNPrecord[p] in snps:
+            allele = pToSNPrecord[p].split('-')[2]
+        else:
+            allele = pToSNPrecord[p].split('-')[0]
+        sampleSeq.append(allele)
+    print(sampleSeq)
+    
+    nl = ''.join(sampleSeq)
+    outFile.write('\n#Haplotype Assignment\nsample haplotype:\t%s\n' % nl)
+    
+    # now need to go through and figure out the ones with the closest match
+    dists = []
+    for defHaps in definedHaps:
+        hapName =defHaps[0]
+        hapSeq = defHaps[1]
+        
+        numDiff = 0
+        for i in range(len(hapSeq)):
+            if hapSeq[i] != sampleSeq[i]:
+                numDiff += 1
+        dists.append([numDiff,hapName])
+            
+    # now need to sort
+    dists.sort(key=lambda i: i[0])
+    print(dists)
+    
+    if dists[0][0] < dists[1][0]:
+        outFile.write('Best match:\t%s\tNum differences:\t%i\n' % (dists[0][1],dists[0][0]))
+    else:
+        for d in dists:
+            if d[0] > dists[0][0]:
+                continue
+            outFile.write('Tied match:\t%s\tNum differences:\t%i\n' % (d[1],d[0]))    
+    outFile.close()
 #############################################################################    
 # Makes a dictionary of the info field in a vcf file
 # returns the dictionary

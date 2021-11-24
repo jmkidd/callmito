@@ -119,6 +119,7 @@ callmito.filter_germline(myData)
 # make fasta and mask
 callmito.make_fasta_germline(myData)
 
+
 callmito.assign_haplogroup(myData)
 
 myData['logFile'].close()
