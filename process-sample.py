@@ -60,7 +60,7 @@ myData['mitoLen'] = l
 inFile.close()
 
 myData['roteTake'] = 4000 # take 4000 first and last from the rotated
-
+myData['minAlleleFreq'] = 0.5 # require >= 50% read support
 
 # check that have interval list file
 myData['mitoFaIntervalList'] = myData['mitoFa'].replace('.fa','.interval_list')

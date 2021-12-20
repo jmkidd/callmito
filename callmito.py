@@ -243,27 +243,45 @@ def extract_reads(myData):
     
     myData['logFile'].write('\nstarting extraction of fastq\n')
     
-    cmd = 'samtools view -T %s -M -L %s %s ' % (myData['ref'], myData['coordsFileName'], myData['cramFileName'])
-    print(cmd)
-    myData['logFile'].write(cmd + '\n')
+    # due this one through a temp file name, as it may be very large and can break the pipe
     
+    myData['tmpSamFileName'] = myData['finalDirSample'] + 'tmp.extract.sam'
+    
+    cmd = 'samtools view -T %s -M -L %s -o %s -O SAM %s  ' % (myData['ref'], myData['coordsFileName'],myData['tmpSamFileName'],myData['cramFileName'])
+    print(cmd)
+    runCMD(cmd)    
+    myData['logFile'].write(cmd + '\n')
+    myData['logFile'].flush()
+    myData['logFile'].write('DONE' + '\n')
+    myData['logFile'].flush()
+    print('DONE initial extraction',flush=True)
+    
+    # these dictionaries can be large, requires some more memory when there is a lot of mito reads
     myData['readData'] = {}  # dictionary to store all of read 1 and read 2 info
     myData['readsToExtract'] = {} # dictionary of reads to extract
     
-    samLines = runCMD_output(cmd)
-    for samLine in samLines:
+    myData['logFile'].write('starting to read through extracted file' + '\n')
+    myData['logFile'].flush()
+  
+    tmpIn = open(myData['tmpSamFileName'],'r')
+    for samLine in tmpIn:
         samLine = samLine.rstrip()
         samLine = samLine.split()
         samRec = parse_sam_line(samLine)
         
-        seqInfo = get_seq_from_sam(samRec)
-        if seqInfo[0] not in myData['readData']:
+
+        if samRec['isFirst'] is True:
+            readNum = 1
+        else:
+            readNum = 2
+ 
+        if samRec['seqName'] not in myData['readData']:
             myData['readData'][samRec['seqName']] = ['Empty','Empty']
-        myData['readData'][samRec['seqName']][seqInfo[1]-1] = [seqInfo[2],seqInfo[3],samRec]  # seq, qual, then samRec to keep
-        
+        # just save the samLine, which is the split list of the samfile line, this saves space    
+        myData['readData'][samRec['seqName']][readNum-1] = samLine        
         if to_extract(samRec) is True:
             myData['readsToExtract'][samRec['seqName']] = 1   
-    
+    tmpIn.close()
     
     s = 'Have total of %i reads pass extraction criteria' % len(myData['readsToExtract'])    
     print(s,flush=True)
@@ -279,7 +297,7 @@ def extract_reads(myData):
     s = 'After initial read through, there are %i with missing mates' % nMissing
     print(s,flush=True)
     myData['logFile'].write(s + '\n')
-    
+        
     s = 'Starting pass 1 of cleanup of other read ends'            
     print(s,flush=True)
     myData['logFile'].write(s + '\n')
@@ -289,9 +307,9 @@ def extract_reads(myData):
             continue
         
         if myData['readData'][rn][0] == 'Empty':
-            rec = myData['readData'][rn][1][2]
+            rec = parse_sam_line(myData['readData'][rn][1])
         else:
-            rec = myData['readData'][rn][0][2]
+            rec = parse_sam_line(myData['readData'][rn][0])
         
         # check out where the mate is
         mateChrom = rec['mateChrom']
@@ -311,11 +329,20 @@ def extract_reads(myData):
             samLine = samLine.rstrip()
             samLine = samLine.split()
             samRec = parse_sam_line(samLine)
+
+            # check to see if it is one that we should do
+            if samRec['seqName'] not in myData['readsToExtract']:
+                continue    
         
-            seqInfo = get_seq_from_sam(samRec)
-            if seqInfo[0] not in myData['readData']:
+            if samRec['isFirst'] is True:
+                readNum = 1
+            else:
+                readNum = 2
+                
+
+            if samRec['seqName'] not in myData['readData']: # this should never be true... only reads we are considering
                 myData['readData'][samRec['seqName']] = ['Empty','Empty']
-            myData['readData'][samRec['seqName']][seqInfo[1]-1] = [seqInfo[2],seqInfo[3],samRec]  # seq, qual, then samRec to keep
+            myData['readData'][samRec['seqName']][readNum-1] = samLine 
         
     # get how many need extraction after second pass
     nMissing = 0
@@ -335,19 +362,25 @@ def extract_reads(myData):
         sys.exit()
 
     # ready to write the fastq to out
-     
+    
     myData['fastq1OutName'] = myData['finalDirSample'] + 'r1.fq.gz'
     myData['fastq2OutName'] = myData['finalDirSample'] + 'r2.fq.gz'
      
     out1 = gzip.open(myData['fastq1OutName'],'wt')
     out2 = gzip.open(myData['fastq2OutName'],'wt')
     for rn in myData['readsToExtract']:
-        s = myData['readData'][rn][0][0]
-        q = myData['readData'][rn][0][1]
+        samRec = parse_sam_line(myData['readData'][rn][0])
+        seqInfo = get_seq_from_sam(samRec)
+        s = seqInfo[2]
+        q = seqInfo[3]
+        
         out1.write('@%s\n%s\n+\n%s\n' % (rn,s,q))
 
-        s = myData['readData'][rn][1][0]
-        q = myData['readData'][rn][1][1]
+        samRec = parse_sam_line(myData['readData'][rn][1])
+        seqInfo = get_seq_from_sam(samRec)
+        s = seqInfo[2]
+        q = seqInfo[3]
+
         out2.write('@%s\n%s\n+\n%s\n' % (rn,s,q))
     out1.close()
     out2.close()
@@ -356,6 +389,20 @@ def extract_reads(myData):
     print(s,flush=True)
     myData['logFile'].write(s + '\n')          
     myData['logFile'].flush() 
+    
+    # free up memory
+    myData['readsToExtract'].clear()
+    myData['readData'].clear()
+    
+    
+    cmd = 'rm ' + myData['tmpSamFileName']
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')          
+    myData['logFile'].flush() 
+    runCMD(cmd)
+
+
+    
 ###############################################################################        
 def align_to_mitos(myData):
     s = 'align to the two mitos'
@@ -647,7 +694,10 @@ def call_vars(myData):
 ###################################################################################################
 def filter_germline(myData):
 # filter out for germline calls
-    myData['mitoMergeVCFFilter'] =  myData['finalDirSample'] + 'mitoMerged.germline.filter.vcf'
+    myData['mitoMergeVCFFilter'] =  myData['finalDirSample'] + myData['sampleName'] + '.mitoMerged.germline.filter.vcf'
+    myData['mitoMergeNonRefFraction'] = myData['finalDirSample'] + myData['sampleName'] + '.nonRefFraction.txt'
+
+    outStats = open(myData['mitoMergeNonRefFraction'],'w')
 
     inFile = gzip.open(myData['mitoMergeVCF'],'rt')
     outFile = open(myData['mitoMergeVCFFilter'],'w')
@@ -677,7 +727,8 @@ def filter_germline(myData):
         dp1 = int(dp[1])
         tot = dp0 + dp1
         f = dp1/tot
-        if f < 0.99:
+        outStats.write('%f\n' % f)
+        if f < myData['minAlleleFreq']:
             continue
         
         line[6] = 'PASS'
@@ -694,6 +745,8 @@ def filter_germline(myData):
     inFile.close()
     outFile.close()  
     # convert to gz
+    outStats.close()
+
     cmd = 'bgzip %s' % myData['mitoMergeVCFFilter']
     print(cmd,flush=True)
     myData['logFile'].write(cmd + '\n')              
@@ -704,8 +757,6 @@ def filter_germline(myData):
     print(cmd,flush=True)
     myData['logFile'].write(cmd + '\n')              
     runCMD(cmd)
-    
-    
     
 ###################################################################################################
 def make_fasta_germline(myData):
