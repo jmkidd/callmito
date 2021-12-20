@@ -342,7 +342,8 @@ def extract_reads(myData):
 
             if samRec['seqName'] not in myData['readData']: # this should never be true... only reads we are considering
                 myData['readData'][samRec['seqName']] = ['Empty','Empty']
-            myData['readData'][samRec['seqName']][readNum-1] = samLine 
+            myData['readData'][samRec['seqName']][readNum-1] = samLine
+                 
         
     # get how many need extraction after second pass
     nMissing = 0
@@ -354,11 +355,87 @@ def extract_reads(myData):
     s = 'After second pass, there are %i with missing mates' % nMissing
     print(s,flush=True)
     myData['logFile'].write(s + '\n')
+    
+    # third pass, try to look at other location using SA tag
+    s = 'Starting pass 2 of cleanup of other read ends, following SA tag'            
+    print(s,flush=True)
+    myData['logFile'].write(s + '\n')
+    
+    # pass 2
+    print('second pass cleanup of',len(rnsToGetMate))
+    for rn in rnsToGetMate:
+        if myData['readData'][rn][0] != 'Empty' and myData['readData'][rn][1] != 'Empty': # already found
+            continue
+        
+        if myData['readData'][rn][0] == 'Empty':
+            rec = parse_sam_line(myData['readData'][rn][1])
+        else:
+            rec = parse_sam_line(myData['readData'][rn][0])
+        
+        tags = rec['otherTags']
+        # get the SA tag
+        saTag = '?'
+        for tag in tags:
+            if tag[0:3] == 'SA:':
+                saTag = tag
+        if saTag == '?':
+            print('no sa tag found',rn,flush=True)
+            continue
+        
+        saTagInfo = saTag[5:]
+        saTagInfo = saTagInfo.split(',')
+        saChrom = saTagInfo[0]
+        saPos = int(saTagInfo[1])
+        
+        saPosStart = saPos - searchDelta
+        saPosEnd = saPos + searchDelta        
+
+        searchInt = '%s:%i-%i' % (saChrom,saPosStart,saPosEnd)
+        
+        # search region
+        cmd = 'samtools view -T %s %s %s ' % (myData['ref'], myData['cramFileName'], searchInt)
+        
+        samLines = runCMD_output(cmd)
+        for samLine in samLines:
+            samLine = samLine.rstrip()
+            samLine = samLine.split()
+            samRec = parse_sam_line(samLine)
+
+            # check to see if it is one that we should do
+            if samRec['seqName'] not in myData['readsToExtract']:
+                continue    
+        
+            if samRec['isFirst'] is True:
+                readNum = 1
+            else:
+                readNum = 2
+                
+
+            if samRec['seqName'] not in myData['readData']: # this should never be true... only reads we are considering
+                myData['readData'][samRec['seqName']] = ['Empty','Empty']
+            myData['readData'][samRec['seqName']][readNum-1] = samLine
+    
+    
+    # pass 2
+    # get how many need extraction after second pass
+    nMissing = 0
+    rnsToGetMate = []    
+    for rn in myData['readsToExtract']:
+        if myData['readData'][rn][0] == 'Empty' or myData['readData'][rn][1] == 'Empty':
+            nMissing += 1
+            rnsToGetMate.append(rn)
+    s = 'After second pass cleanup, there are %i with missing mates' % nMissing
+    print(s,flush=True)
+    myData['logFile'].write(s + '\n')
 
     if nMissing != 0:
-        s = 'ERROR! there are still misisng reads after the second pass!'
+        s = 'ERROR! there are still misisng reads after the second pass cleanup!'
         print(s,flush=True)
         myData['logFile'].write(s + '\n')
+        
+        for rn in rnsToGetMate:
+            print(rn,flush=True)
+            myData['logFile'].write(rn + '\n')            
         sys.exit()
 
     # ready to write the fastq to out
