@@ -804,7 +804,10 @@ def filter_germline(myData):
         dp0 = int(dp[0])
         dp1 = int(dp[1])
         tot = dp0 + dp1
-        f = dp1/tot
+        if tot == 0:  # because of filtering
+            f = 0.0
+        else:
+            f = dp1/tot
         outStats.write('%f\n' % f)
         if f < myData['minAlleleFreq']:
             continue
