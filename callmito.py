@@ -301,6 +301,7 @@ def extract_reads(myData):
     s = 'Starting pass 1 of cleanup of other read ends'            
     print(s,flush=True)
     myData['logFile'].write(s + '\n')
+    myData['logFile'].flush()    
     
     for rn in rnsToGetMate:
         if myData['readData'][rn][0] != 'Empty' and myData['readData'][rn][1] != 'Empty': # already found
@@ -362,6 +363,7 @@ def extract_reads(myData):
     s = 'Starting pass 2 of cleanup of other read ends, following SA tag'            
     print(s,flush=True)
     myData['logFile'].write(s + '\n')
+    myData['logFile'].flush()    
     
     # pass 2
     print('second pass cleanup of',len(rnsToGetMate))
@@ -428,6 +430,7 @@ def extract_reads(myData):
     s = 'After pass 2 of cleanup, there are %i with missing mates' % nMissing
     print(s,flush=True)
     myData['logFile'].write(s + '\n')
+    myData['logFile'].flush()    
 
     if nMissing != 0:
         s = 'ERROR! there are still misisng reads after the second pass cleanup!'
@@ -496,7 +499,9 @@ def align_to_mitos(myData):
     print('rg is',rg)
     cmd = 'bwa mem -R %s %s %s %s | samtools view -b -o %s - ' % (rg,myData['mitoFa'],myData['fastq1OutName'],myData['fastq2OutName'],myData['mitoBam'])
     print(cmd,flush=True)
-    myData['logFile'].write(cmd + '\n')              
+    myData['logFile'].write(cmd + '\n')
+    myData['logFile'].flush()    
+                  
     runCMD(cmd)
 
 
@@ -507,6 +512,8 @@ def align_to_mitos(myData):
     cmd = 'bwa mem -R %s %s %s %s | samtools view -b -o %s - ' % (rg,myData['mitoFaRotated'],myData['fastq1OutName'],myData['fastq2OutName'],myData['mitoRotatedBam'])
     print(cmd,flush=True)
     myData['logFile'].write(cmd + '\n')              
+    myData['logFile'].flush()    
+
     runCMD(cmd)
     
     # sort and markdups
@@ -521,6 +528,8 @@ def align_to_mitos(myData):
     cmd = 'gatk SortSam -SO coordinate -I %s -O %s ' % (myData['mitoRotatedBam'],myData['mitoRotatedBamSort'])
     print(cmd,flush=True)
     myData['logFile'].write(cmd + '\n')              
+    myData['logFile'].flush()    
+
     runCMD(cmd)
     
     # mark duplicates
@@ -550,6 +559,8 @@ def align_to_mitos(myData):
     print(cmd,flush=True)
     myData['logFile'].write(cmd + '\n')              
     runCMD(cmd)
+    myData['logFile'].flush()    
+    
 ###############################################################################        
 def run_coverage(myData):
 # get covergage
@@ -667,6 +678,10 @@ def run_coverage(myData):
         outFile.write('%s\t%i\n' % (i,myData[i]))
         print('%s\t%i' % (i,myData[i]))
     outFile.close()
+    
+    myData['logFile'].flush()    
+    
+    
 ###################################################################################################
 def call_vars(myData):
 # call the mitochondrial variants
@@ -769,6 +784,9 @@ def call_vars(myData):
     print(cmd,flush=True)
     myData['logFile'].write(cmd + '\n')              
     runCMD(cmd)
+    myData['logFile'].flush()    
+    
+    
 ###################################################################################################
 def filter_germline(myData):
 # filter out for germline calls
@@ -839,6 +857,9 @@ def filter_germline(myData):
     myData['logFile'].write(cmd + '\n')              
     runCMD(cmd)
     
+    myData['logFile'].flush()    
+    
+    
 ###################################################################################################
 def make_fasta_germline(myData):
     myData['mitoMergeMasked'] =  myData['finalDirSample'] + 'mask-regions.bed'
@@ -872,11 +893,48 @@ def make_fasta_germline(myData):
             failDepthMask +=1
             outFile.write('NC_002008.4\t%i\t%i\n' % (pos-1,pos))
     inFile.close()
-    outFile.close()
     
     s = 'found %i positions that failed depth check 100' % failDepthMask
     print(s,flush=True)
     myData['logFile'].write(s + '\n')              
+
+    s = 'checking for overlapping vcf intervals'
+    print(s,flush=True)
+    myData['logFile'].write(s + '\n')          
+    
+    intsToMask = []
+    
+    prevStart = 0
+    prevEnd = 0
+    inFile = gzip.open(myData['mitoMergeVCFFilter'],'rt')
+    for line in inFile:
+        if line[0] == '#':
+            continue
+        line = line.rstrip()
+        line = line.split()
+        pos = int(line[1])
+        ref = line[3]
+        refLen = len(ref)
+        posEnd = pos+refLen - 1
+        
+        if pos <= prevEnd and pos >= prevStart:
+            intsToMask.append([prevStart,prevEnd])
+            intsToMask.append([pos,posEnd])
+        prevStart = pos
+        prevEnd = posEnd
+    inFile.close()
+    
+    s = 'found %i intervals to mask that overlap' % len(intsToMask)
+    print(s,flush=True)
+    myData['logFile'].write(s + '\n')   
+    myData['logFile'].flush()    
+           
+    
+    for r in intsToMask:
+        posStart = r[0]-1
+        posEnd = r[1]
+        outFile.write('NC_002008.4\t%i\t%i\n' % (posStart,posEnd))
+    outFile.close()
     
     # make fasta
     cmd = 'bcftools consensus -f %s -m %s %s > %s ' % (myData['mitoFa'],myData['mitoMergeMasked'],myData['mitoMergeVCFFilter'], tmpFa )
@@ -892,7 +950,9 @@ def make_fasta_germline(myData):
         else:
             outFile.write(line)
     inFile.close()
-    outFile.close()    
+    outFile.close()      
+    myData['logFile'].flush()    
+      
 #############################################################################    
 def assign_haplogroup(myData):
     # read in diagnostic table
