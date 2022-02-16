@@ -852,6 +852,7 @@ def filter_germline(myData):
         # check filters, see if max alt allele passess filters
         # only look for strand_bias as an altefact
         AS_Filters = infoDict['AS_FilterStatus']
+        AS_Filters = AS_Filter.split('|')
         if 'strand_bias' in AS_Filters[altIndexmaxAltAlleleFeq-1]:
             s = 'fails strand bias,allele index is %i' % altIndexmaxAltAlleleFeq
             s += '\n' + ol
