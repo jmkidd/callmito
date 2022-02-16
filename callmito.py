@@ -707,7 +707,7 @@ def call_vars(myData):
     runCMD(cmd)
 
 
-# filter..
+    # filter..
     cmd = 'gatk FilterMutectCalls --mitochondria-mode -R %s -V %s -O %s ' % (myData['mitoFa'],myData['mitoVCF'],myData['mitoVCFFilter'] )
     print(cmd,flush=True)
     myData['logFile'].write(cmd + '\n')              
@@ -738,7 +738,7 @@ def call_vars(myData):
         line = line.rstrip()
         line = line.split()
         line[1] = int(line[1])
-        line[6] = '.'
+        #line[6] = '.' # keep filter results
         liftedVCF.append(line)
     inFile.close()
     print('read in %i from %s' % (len(liftedVCF),myData['mitoRotatedVCFLift']))
@@ -751,7 +751,7 @@ def call_vars(myData):
         line = line.rstrip()
         line = line.split()
         line[1] = int(line[1])
-        line[6] = '.'
+        #line[6] = '.' # keep filter results
         mitoVCF.append(line)
     inFile.close()
     print('read in %i from %s' % (len(mitoVCF),myData['mitoVCF']))
@@ -759,7 +759,7 @@ def call_vars(myData):
     outFile = open(myData['mitoMergeVCF'],'w')
     
     # header
-    inFile = gzip.open(myData['mitoVCF'],'rt')
+    inFile = gzip.open(myData['mitoVCFFilter'],'rt')
     for line in inFile:
         if line[0] == '#':
             outFile.write(line)
@@ -819,40 +819,57 @@ def filter_germline(myData):
             outFile.write(line)
             continue
         line = line.rstrip()
+        ol = line
         line = line.split()
         
         infoDict = parse_vcf_info(line[7])
         genoDict = parse_genotype(line[8],line[9])
+
         
-        
-        if float(infoDict['SAPP'][0]) > 0.95: # strand bias cutoff
-             continue
-        
+                
         # check num alt alleles
         alts = line[4]
         alts = alts.split(',')
-        if len(alts) != 1:  # multiple alternative alleles
-            continue
-        
+
         # get dp
         dp = genoDict['AD']
-        dp0 = int(dp[0])
-        dp1 = int(dp[1])
-        tot = dp0 + dp1
-        if tot == 0:  # because of filtering
-            f = 0.0
-        else:
-            f = dp1/tot
-        outStats.write('%f\n' % f)
-        if f < myData['minAlleleFreq']:
+        altIndexmaxAltAlleleFeq = 0 # is index of alleles, not of alt allels
+        maxAltAlleleFeq = 0.0
+        tot = 0
+        for i in range(len(dp)):
+            tot += int(dp[i])
+        for i in range(1,len(dp)):
+            d = int(dp[i])
+            if tot == 0:
+                f = 0.0
+            else:
+                f = d/tot
+            if f > maxAltAlleleFeq:
+                maxAltAlleleFeq = f
+                altIndexmaxAltAlleleFeq = i
+            
+
+        # check filters, see if max alt allele passess filters
+        # only look for strand_bias as an altefact
+        AS_Filters = infoDict['AS_FilterStatus']
+        if 'strand_bias' in AS_Filters[altIndexmaxAltAlleleFeq-1]:
+            s = 'fails strand bias,allele index is %i' % altIndexmaxAltAlleleFeq
+            s += '\n' + ol
+            print(s,flush=True)
+            myData['logFile'].write(s + '\n')                                                
             continue
         
-        line[6] = 'PASS'
+
+
+        outStats.write('%f\n' % maxAltAlleleFeq)        # print out the max alt alle freq
+        if maxAltAlleleFeq < myData['minAlleleFreq']:  # max alt allele freq is no good, so skip it...
+            continue
         
+        line[6] = 'PASS'        
         # edit the gen
         gen = line[9]
         gen = gen.split(':')
-        gen[0] = '1/1'
+        gen[0] = str(altIndexmaxAltAlleleFeq) + '/' + str(altIndexmaxAltAlleleFeq) # make it homozygous
         line[9] = ':'.join(gen)
         
         nl = '\t'.join(line) + '\n'

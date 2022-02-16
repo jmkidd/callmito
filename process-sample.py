@@ -102,6 +102,8 @@ callmito.check_prog_paths(myData)
 # get reads to extract
 callmito.extract_reads(myData)
 
+
+
 # align to each mito
 callmito.align_to_mitos(myData)
 
@@ -112,6 +114,7 @@ callmito.run_coverage(myData)
 callmito.call_vars(myData)
 
 # filter vcf
+
 callmito.filter_germline(myData)
 
 # make fasta and mask
