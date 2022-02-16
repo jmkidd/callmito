@@ -692,19 +692,35 @@ def call_vars(myData):
     
     myData['mitoMergeVCF'] =  myData['finalDirSample'] + 'mitoMerged.vcf'
     
+    myData['mitoVCFFilter'] = myData['mitoVCF'] + '.filter.gz'
+    myData['mitoRotatedVCFFilter'] = myData['mitoRotatedVCF'] + '.filter.gz'    
+    
 
-    cmd = 'gatk Mutect2 -R %s --mitochondria-mode -I %s --median-autosomal-coverage %f --annotation StrandBiasBySample -O %s' % (myData['mitoFa'],myData['mitoBamSortMD'], myData['autoCoverage'],myData['mitoVCF']) 
+    cmd = 'gatk Mutect2 -R %s --mitochondria-mode -I %s --annotation StrandBiasBySample -O %s' % (myData['mitoFa'],myData['mitoBamSortMD'],myData['mitoVCF']) 
     print(cmd,flush=True)
     myData['logFile'].write(cmd + '\n')              
     runCMD(cmd)
 
-    cmd = 'gatk Mutect2 -R %s --mitochondria-mode -I %s --median-autosomal-coverage %f --annotation StrandBiasBySample -O %s' % (myData['mitoFaRotated'],myData['mitoRotatedBamSortMD'], myData['autoCoverage'],myData['mitoRotatedVCF']) 
+    cmd = 'gatk Mutect2 -R %s --mitochondria-mode -I %s --annotation StrandBiasBySample -O %s' % (myData['mitoFaRotated'],myData['mitoRotatedBamSortMD'],myData['mitoRotatedVCF']) 
     print(cmd,flush=True)
     myData['logFile'].write(cmd + '\n')              
     runCMD(cmd)
+
+
+# filter..
+    cmd = 'gatk FilterMutectCalls --mitochondria-mode -R %s -V %s -O %s ' % (myData['mitoFa'],myData['mitoVCF'],myData['mitoVCFFilter'] )
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
+
+    cmd = 'gatk FilterMutectCalls --mitochondria-mode -R %s -V %s -O %s ' % (myData['mitoFaRotated'],myData['mitoRotatedVCF'],myData['mitoRotatedVCFFilter'] )
+    print(cmd,flush=True)
+    myData['logFile'].write(cmd + '\n')              
+    runCMD(cmd)
+
 
     # run liftover vcf    
-    cmd = 'gatk LiftoverVcf -I %s -O %s -CHAIN %s -REJECT %s -R %s ' % (myData['mitoRotatedVCF'],myData['mitoRotatedVCFLift'],myData['chainFile'],myData['mitoRotatedVCFLiftFail'],myData['mitoFa'] )    
+    cmd = 'gatk LiftoverVcf -I %s -O %s -CHAIN %s -REJECT %s -R %s ' % (myData['mitoRotatedVCFFilter'],myData['mitoRotatedVCFLift'],myData['chainFile'],myData['mitoRotatedVCFLiftFail'],myData['mitoFa'] )    
     print(cmd,flush=True)
     myData['logFile'].write(cmd + '\n')              
     runCMD(cmd)
@@ -728,7 +744,7 @@ def call_vars(myData):
     print('read in %i from %s' % (len(liftedVCF),myData['mitoRotatedVCFLift']))
 
     mitoVCF = []
-    inFile = gzip.open(myData['mitoVCF'],'rt')
+    inFile = gzip.open(myData['mitoVCFFilter'],'rt')
     for line in inFile:
         if line[0] == '#':
             continue
@@ -790,6 +806,7 @@ def call_vars(myData):
 ###################################################################################################
 def filter_germline(myData):
 # filter out for germline calls
+# parses output -- have already run  gatk FilterMutectCalls
     myData['mitoMergeVCFFilter'] =  myData['finalDirSample'] + myData['sampleName'] + '.mitoMerged.germline.filter.vcf'
     myData['mitoMergeNonRefFraction'] = myData['finalDirSample'] + myData['sampleName'] + '.nonRefFraction.txt'
 

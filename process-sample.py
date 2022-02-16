@@ -21,7 +21,6 @@ parser.add_argument('--coords',type=str,help='coordinates to extract, numts + ch
 parser.add_argument('--mitoFa',type=str,help='mito fasta with index',required=True)
 parser.add_argument('--mitoFaRotated',type=str,help='rotated mito fasta with index',required=True)
 parser.add_argument('--chainfile',type=str,help='liftover chain fail to convert rotated to original',required=True)
-parser.add_argument('--autocoverage',type=float,help='autosomal coverage',required=True)
 parser.add_argument('--diagnosticTable',type=str,help='table of diagnostic SNPs',required=True)
 
 
@@ -43,7 +42,6 @@ myData['mitoFa'] = args.mitoFa
 myData['mitoFaRotated'] = args.mitoFaRotated
 
 
-myData['autoCoverage'] = args.autocoverage
 myData['diagnosticTable'] = args.diagnosticTable
 
 
