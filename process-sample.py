@@ -103,7 +103,6 @@ callmito.check_prog_paths(myData)
 callmito.extract_reads(myData)
 
 
-
 # align to each mito
 callmito.align_to_mitos(myData)
 
@@ -114,10 +113,15 @@ callmito.run_coverage(myData)
 callmito.call_vars(myData)
 
 # filter vcf
-
+#myData['mitoMergeVCF'] =  myData['finalDirSample'] + 'mitoMerged.vcf' + '.gz'
+#myData['mitoMergePerBp'] =  myData['finalDirSample'] + 'mitoMerge.per-bp.txt'
 callmito.filter_germline(myData)
 
 # make fasta and mask
+#myData['mitoMergeVCFFilter'] =  myData['finalDirSample'] + myData['sampleName'] + '.mitoMerged.germline.filter.vcf' + '.gz'
+#myData['mitoMergePerBp'] =  myData['finalDirSample'] + 'mitoMerge.per-bp.txt'
+
+
 callmito.make_fasta_germline(myData)
 
 

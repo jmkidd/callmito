@@ -45,7 +45,34 @@ def check_prog_paths(myData):
         else:
             myData['logFile'].write('%s\t%s\n' % (p,shutil.which(p)))
             
+
+    check_gatk_version(myData)
+
     myData['logFile'].flush()              
+
+
+############################################################################# 
+def check_gatk_version(myData):
+    myData['tmpVersionName'] = myData['finalDirSample'] + 'tmp.gatk.version'
+
+    gatk_v = runCMD_output('gatk --version > %s' % myData['tmpVersionName'])
+    inFile = open(myData['tmpVersionName'],'r')    
+    line = inFile.readline()
+    inFile.close()
+    line = line.rstrip()
+    line = line.split()
+    v = line[-1]
+        
+    s = 'GATK version is: %s' % v
+    print(s,flush=True)
+    myData['logFile'].write(s + '\n')
+
+    if v != 'v4.2.5.0':
+        s = 'ERROR! GATK v4.2.5.0 is required!.  Please fix'
+        print(s, flush=True)
+        myData['logFile'].write(s + '\n')
+        myData['logFile'].close()        
+        sys.exit()
 ############################################################################# 
 def init_log(myData):
     k = list(myData.keys())
@@ -696,12 +723,12 @@ def call_vars(myData):
     myData['mitoRotatedVCFFilter'] = myData['mitoRotatedVCF'] + '.filter.gz'    
     
 
-    cmd = 'gatk Mutect2 -R %s --mitochondria-mode -I %s --annotation StrandBiasBySample -O %s' % (myData['mitoFa'],myData['mitoBamSortMD'],myData['mitoVCF']) 
+    cmd = 'gatk Mutect2 --max-reads-per-alignment-start 75 --max-mnp-distance 0 -R %s --mitochondria-mode -I %s --annotation StrandBiasBySample -O %s' % (myData['mitoFa'],myData['mitoBamSortMD'],myData['mitoVCF']) 
     print(cmd,flush=True)
     myData['logFile'].write(cmd + '\n')              
     runCMD(cmd)
 
-    cmd = 'gatk Mutect2 -R %s --mitochondria-mode -I %s --annotation StrandBiasBySample -O %s' % (myData['mitoFaRotated'],myData['mitoRotatedBamSortMD'],myData['mitoRotatedVCF']) 
+    cmd = 'gatk Mutect2 --max-reads-per-alignment-start 75 --max-mnp-distance 0 -R %s --mitochondria-mode -I %s --annotation StrandBiasBySample -O %s' % (myData['mitoFaRotated'],myData['mitoRotatedBamSortMD'],myData['mitoRotatedVCF']) 
     print(cmd,flush=True)
     myData['logFile'].write(cmd + '\n')              
     runCMD(cmd)
@@ -851,20 +878,20 @@ def filter_germline(myData):
 
         # check filters, see if max alt allele passess filters
         # only look for strand_bias as an altefact
-        AS_Filters = infoDict['AS_FilterStatus']
-        AS_Filters = AS_Filter.split('|')
+        AS_Filters = infoDict['AS_FilterStatus']        
         if 'strand_bias' in AS_Filters[altIndexmaxAltAlleleFeq-1]:
             s = 'fails strand bias,allele index is %i' % altIndexmaxAltAlleleFeq
             s += '\n' + ol
             print(s,flush=True)
             myData['logFile'].write(s + '\n')                                                
             continue
-        
-
 
         outStats.write('%f\n' % maxAltAlleleFeq)        # print out the max alt alle freq
         if maxAltAlleleFeq < myData['minAlleleFreq']:  # max alt allele freq is no good, so skip it...
             continue
+        
+
+
         
         line[6] = 'PASS'        
         # edit the gen
@@ -906,17 +933,16 @@ def make_fasta_germline(myData):
     # first setup regions to mask, includes hard coded regions
     # and any region with depth < 100
     outFile = open(myData['mitoMergeMasked'],'w')
-    outFile.write('NC_002008.4\t16039\t16550\n')
+    outFile.write('NC_002008.4\15989\t16600\n')
     outFile.write('NC_002008.4\t15511\t15535\n')    
+
     
     alreadyMasked = {}
-    for i in range(16040,16550+1):
+    for i in range(15990,15990+1):
         alreadyMasked[i] = 1
     for i in range(15512,15535+1):
         alreadyMasked[i] = 1
-
-    
-    
+        
     failDepthMask = 0
     inFile = open(myData['mitoMergePerBp'],'r')
     for line in inFile:
@@ -972,7 +998,8 @@ def make_fasta_germline(myData):
     outFile.close()
     
     # make fasta
-    cmd = 'bcftools consensus -f %s -m %s %s > %s ' % (myData['mitoFa'],myData['mitoMergeMasked'],myData['mitoMergeVCFFilter'], tmpFa )
+
+    cmd = 'bcftools consensus --sample %s -f %s -m %s %s > %s ' % (myData['sampleName'], myData['mitoFa'],myData['mitoMergeMasked'],myData['mitoMergeVCFFilter'], tmpFa )
     print(cmd,flush=True)
     myData['logFile'].write(cmd + '\n')              
     runCMD(cmd)
@@ -1104,7 +1131,10 @@ def parse_vcf_info(infoField):
     for field in infoList:
        if field.count('=') == 1:
            (name,vals) = field.split('=')[0:2]
-           vals = vals.split(',')
+           if name == 'AS_FilterStatus':
+               vals = vals.split('|')
+           else:
+               vals = vals.split(',')
            if vals == 'true' or vals == 'True':
                vals = True
            if vals == 'false' or vals == 'False':
