@@ -933,7 +933,7 @@ def make_fasta_germline(myData):
     # first setup regions to mask, includes hard coded regions
     # and any region with depth < 100
     outFile = open(myData['mitoMergeMasked'],'w')
-    outFile.write('NC_002008.4\15989\t16600\n')
+    outFile.write('NC_002008.4\t15989\t16600\n')
     outFile.write('NC_002008.4\t15511\t15535\n')    
 
     
