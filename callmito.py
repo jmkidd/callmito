@@ -710,6 +710,68 @@ def run_coverage(myData):
     
     
 ###################################################################################################
+def down_sample(myData):
+# make new downsampled bams if coverage is too high
+    seed = 1983 # so that both bams are downsamples the same
+    s = 'mean depth is %f ' % myData['meanDepth']
+    if myData['meanDepth'] <= myData['maxCoverage']:
+        s += ' less than max of %f, OK!' % myData['maxCoverage']
+        print(s,flush=True)
+        myData['logFile'].write(s + '\n')  
+        return; # no need to downsample
+    # run downsample
+    f = myData['maxCoverage'] / myData['meanDepth'] 
+    s += ' more than max of %f, run downsample %f!' % (myData['maxCoverage'],f)
+    print(s,flush=True)
+    myData['logFile'].write(s + '\n')  
+
+    myData['mitoBamOrig'] = myData['finalDirSample'] + 'ORIGINIAL.mito.sort.markdup.bam'
+    myData['mitoRotatedBamOrig'] = myData['finalDirSample'] + 'ORIGINIAL.mitoRotated.sort.markdup.bam'    
+
+    cmd = 'mv %s %s' % (myData['mitoBamSortMD'],myData['mitoBamOrig'] )
+    print(cmd)
+    myData['logFile'].write(cmd + '\n')  
+    runCMD(cmd)   
+
+    cmd = 'samtools index %s' % (myData['mitoBamOrig'] )
+    print(cmd)
+    myData['logFile'].write(cmd + '\n')  
+    runCMD(cmd)   
+
+    cmd = 'mv %s %s' % (myData['mitoRotatedBamSortMD'],myData['mitoRotatedBamOrig'] )
+    print(cmd)
+    myData['logFile'].write(cmd + '\n')  
+    runCMD(cmd)   
+
+    cmd = 'samtools index %s' % (myData['mitoRotatedBamOrig'] )
+    print(cmd)
+    myData['logFile'].write(cmd + '\n')  
+    runCMD(cmd)   
+
+    myData['logFile'].flush()
+
+    # run subsample    
+    cmd = 'gatk DownsampleSam -I %s -O %s -P %f -R %i '  % (myData['mitoBamOrig'],myData['mitoBamSortMD'],f,seed)
+    print(cmd)
+    myData['logFile'].write(cmd + '\n')  
+    runCMD(cmd)   
+    cmd = 'samtools index %s' % myData['mitoBamSortMD']
+    print(cmd)
+    myData['logFile'].write(cmd + '\n')  
+    runCMD(cmd)   
+
+    cmd = 'gatk DownsampleSam -I %s -O %s -P %f -R %i '  % (myData['mitoRotatedBamOrig'],myData['mitoRotatedBamSortMD'],f,seed)
+    print(cmd)
+    myData['logFile'].write(cmd + '\n')  
+    runCMD(cmd)   
+    cmd = 'samtools index %s' % myData['mitoRotatedBamSortMD']
+    myData['logFile'].write(cmd + '\n')      
+    runCMD(cmd)   
+    print(cmd)
+    
+    myData['logFile'].flush()
+    
+###################################################################################################
 def call_vars(myData):
 # call the mitochondrial variants
     myData['mitoVCF'] = myData['finalDirSample'] + 'mito.vcf.gz'

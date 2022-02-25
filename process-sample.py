@@ -60,6 +60,10 @@ inFile.close()
 myData['roteTake'] = 4000 # take 4000 first and last from the rotated
 myData['minAlleleFreq'] = 0.5 # require >= 50% read support
 
+# max coverage for downsampling
+myData['maxCoverage'] = 5000
+
+
 # check that have interval list file
 myData['mitoFaIntervalList'] = myData['mitoFa'].replace('.fa','.interval_list')
 myData['mitoFaRotatedIntervalList'] = myData['mitoFaRotated'].replace('.fa','.interval_list')
@@ -109,21 +113,16 @@ callmito.align_to_mitos(myData)
 
 callmito.run_coverage(myData)
 
+callmito.down_sample(myData)
+
 # run vcf
 callmito.call_vars(myData)
 
 # filter vcf
-#myData['mitoMergeVCF'] =  myData['finalDirSample'] + 'mitoMerged.vcf' + '.gz'
-#myData['mitoMergePerBp'] =  myData['finalDirSample'] + 'mitoMerge.per-bp.txt'
 callmito.filter_germline(myData)
 
 # make fasta and mask
-#myData['mitoMergeVCFFilter'] =  myData['finalDirSample'] + myData['sampleName'] + '.mitoMerged.germline.filter.vcf' + '.gz'
-#myData['mitoMergePerBp'] =  myData['finalDirSample'] + 'mitoMerge.per-bp.txt'
-
-
 callmito.make_fasta_germline(myData)
-
 
 callmito.assign_haplogroup(myData)
 
