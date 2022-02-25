@@ -80,7 +80,7 @@ python callmito/process-sample.py \
 --coords COORDINTATES-TO-EXTRACT (callmito/numt-coords-to-extract.95_300.bed) \
 --mitoFa MITO-REFERENCE (callmito/refs/NC_002008.4.fa) \
 --mitoFaRotated ROTATED-MITO-REFERENCE (callmito/refs/NC_002008.4.rotate8k.fa) \
---chainfile LIFTOVER-CHAIN-FILE-FOR-ROTATED-MITO callmito/refs/rotatedToOriginal.liftOver \
+--chainfile LIFTOVER-CHAIN-FILE-FOR-ROTATED-MITO (callmito/refs/rotatedToOriginal.liftOver) \
 --diagnosticTable  DIAGNOSITIC-SNPS-TABLE (callmito/fregel-haplogroups.txt)
 ```
 
