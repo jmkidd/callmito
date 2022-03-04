@@ -22,7 +22,7 @@ Read pairs with at least one read that aligns to chrM or to Nuclear Mitochondira
 (NUMTs) that are >300bp with > 95% identity are extracted.  NuMTs were identified by
 Fabian Ramos-Almodovar. 
 
-## Step 2: Align to standard and rotated mitochodnrial reference genome
+## Step 2: Align to standard and rotated mitochondrial reference genome
 NC_002008.4 is used as the reference mitochondiral genome. To account for the cirular nature
 of the mitochondria, extracted reads are aligned NC_002008.4 as well as to a version of 
 NC_002008.4 that has been rotated by 8 kbp. Resulting BAM files are sorted and duplicates marked.
