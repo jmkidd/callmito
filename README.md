@@ -18,14 +18,14 @@ published genomes with PacBio and Illumina sequence data.
 # Conceptual overview of pipeline
 
 ## Step 1: Extract mitochodnrial reads
-Read pairs with at least run read that align to chrM or to Nuclear Mitochondiral Segments 
+Read pairs with at least one read that aligns to chrM or to Nuclear Mitochondiral Segments 
 (NUMTs) that are >300bp with > 95% identity are extracted.  NuMTs were identified by
-Fabian Ramos-Almodovar 
+Fabian Ramos-Almodovar. 
 
 ## Step 2: Align to standard and rotated mitochodnrial reference genome
 NC_002008.4 is used as the reference mitochondiral genome. To account for the cirular nature
 of the mitochondria, extracted reads are aligned NC_002008.4 as well as to a version of 
-NC_002008.4 that has been rotated by 8 kbp. Resulting BAM files are sorted and duplicate marked.
+NC_002008.4 that has been rotated by 8 kbp. Resulting BAM files are sorted and duplicates marked.
 
 ## Step 3: Coverage assessment
 Coverage along the mitochondrial genome is assessed using CollectHsMetrics from GATK. Depth is
@@ -36,7 +36,7 @@ If the mean coverage is greater than 5,000, the reference and rotated BAMs are d
 to a depth of 5,000 using DownsampleSam from GATK.
 
 ## Step 4: Call mitochondrial variation using Mutect2
-Variants are called from the standard and rotated BAM using mitochondrial mode of Mutect2.
+Variants are called from the standard and rotated BAM using the mitochondrial mode of Mutect2.
 The following options are used: --mitochondria-mode --max-reads-per-alignment-start 75 --max-mnp-distance 0 --annotation StrandBiasBySample
 
 Filters are applied to each of the resulting VCF files using GATK FilterMutectCalls --mitochondria-mode
@@ -50,7 +50,7 @@ allele has a allele fraction less than 0.5.
 ## Step 6: Construct germline mitochondrial fasta 
 A representation of the mitochondria sequence is created using bcftools consensus. Regions with
 a coverage less than 100, or that overlap with NC_002008.4 positions 15990-15990 or 15512-15535
-are masked to 'N'
+are masked to 'N.'
 
 ## Step 7: Attempt haplogroup assignment
 An attempt at haplogroup assignment based on the diagnostic changes reported in Fregel et al.
